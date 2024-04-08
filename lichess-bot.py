@@ -47,8 +47,8 @@ LICHESS_TYPE = Union[lichess.Lichess, test_bot.lichess.Lichess]
 logger = logging.getLogger(__name__)
 
 # with open("lib/versioning.yml") as version_file:
-# with open("/mnt/data/lichess_bot_eval_part_2/lichess-bot/lib/versioning.yml") as version_file:
-with open(Path('lib/versioning.yml').absolute()) as version_file:
+# with open(Path('lib/versioning.yml').absolute()) as version_file:
+with open("/mnt/data/lichess_bot_eval_part_2/lichess-bot/lib/versioning.yml") as version_file:
     versioning_info = yaml.safe_load(version_file)
 
 __version__ = versioning_info["lichess_bot_version"]
