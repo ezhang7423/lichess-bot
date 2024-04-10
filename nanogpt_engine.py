@@ -6,6 +6,7 @@ With these classes, bot makers will not have to implement the UCI or XBoard inte
 
 from __future__ import annotations
 import os
+import re
 import chess
 from chess.engine import PlayResult
 import logging
@@ -103,29 +104,29 @@ class NanoGPTEngine(ExampleEngine):
 
         self.engine = FillerEngine(self, name=self.engine_name)
 
-        self.game_state = ''
-        
-        self.prior_board = None
-        # self.prior_board = chess.Board()
-        
     def search(self, board: chess.Board) -> PlayResult: 
-        is_black =  board.turn == chess.BLACK
+        is_black = board.turn == chess.BLACK
+        
+        raw_pgn = str(chess.pgn.Game.from_board(board))        
+        # > print(raw_pgn)
+        # [Event "?"]
+        # [Site "?"]
+        # [Date "????.??.??"]
+        # [Round "?"]
+        # [White "?"]
+        # [Black "?"]
+        # [Result "*"]
 
-        if board.fullmove_number == 1:
-            self.prior_board = chess.Board()            
-            self.game_state = f"1.{self.prior_board.san(board.move_stack[-1]) + ' ' if is_black else ''}"
-        else:
-            self.game_state = f"{self.game_state}{self.prior_board.san(board.move_stack[-2])}"
-            self.prior_board.push(board.move_stack[-2])
-            if is_black:
-                self.game_state += f" {board.fullmove_number}.{self.prior_board.san(board.move_stack[-1])} "
-            else:
-                self.game_state += f" {self.prior_board.san(board.move_stack[-1])} {board.fullmove_number}."
-            self.prior_board.push(board.move_stack[-1])
-            
-        return get_legal_move(self.player, board, self.game_state)
-    
-    
+        # 1. Nc3 e5 2. e4 Nf6 *
+        
+        game_state = re.sub(r'\. |\s+', lambda m: '.' if m.group(0) == '. ' else ' ', raw_pgn.split('\n\n')[1]) # this will remove spaces after game number
+        # > print(game_state)
+        # 1.Nc3 e5 2.e4 Nf6 *
+        
+        game_state = game_state.replace('*', '') if is_black else game_state.replace('*', f'{board.fullmove_number}.') # removes the *
+        # 1.Nc3 e5 2.e4 Nf6 
+        return get_legal_move(self.player, board, game_state)
+        
     def play_move(self,
                   board: chess.Board,
                   game: model.Game,
@@ -154,11 +155,7 @@ class NanoGPTEngine(ExampleEngine):
         """
 
         try:
-            if self.prior_board is None and board.fullmove_number != 1:
-                # aborts the previous game that this board belongs to
-                raise chess.engine.EngineError("board is from a previous unfinished game --> aborting now")            
             best_move = self.search(board)
-            
         except chess.engine.EngineError as error:
             BadMove = (chess.IllegalMoveError, chess.InvalidMoveError)
             # if any(isinstance(e, BadMove) for e in error.args):
