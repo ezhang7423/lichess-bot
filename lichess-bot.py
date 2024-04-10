@@ -1,5 +1,6 @@
 """The main module that controls lichess-bot."""
 import argparse
+from pathlib import Path
 import chess
 import chess.pgn
 from chess.variant import find_variant
@@ -31,6 +32,11 @@ from http.client import RemoteDisconnected
 from queue import Queue, Empty
 from multiprocessing.pool import Pool
 from typing import Any, Optional, Union
+from dotenv import load_dotenv
+
+load_dotenv() 
+from loguru import logger
+
 USER_PROFILE_TYPE = dict[str, Any]
 EVENT_TYPE = dict[str, Any]
 PLAY_GAME_ARGS_TYPE = dict[str, Any]
@@ -43,9 +49,9 @@ MULTIPROCESSING_LIST_TYPE = MutableSequence[model.Challenge]
 POOL_TYPE = Pool
 LICHESS_TYPE = Union[lichess.Lichess, test_bot.lichess.Lichess]
 
-logger = logging.getLogger(__name__)
 
-with open("lib/versioning.yml") as version_file:
+# with open("lib/versioning.yml") as version_file:
+with open(Path("lib/versioning.yml").resolve()) as version_file:
     versioning_info = yaml.safe_load(version_file)
 
 __version__ = versioning_info["lichess_bot_version"]
@@ -510,6 +516,7 @@ def start_game_thread(active_games: set[str], game_id: str, play_game_args: PLAY
     pool.apply_async(play_game,
                      kwds=play_game_args,
                      error_callback=game_error_handler)
+    # play_game(**play_game_args)
 
 
 def start_game(event: EVENT_TYPE,
@@ -571,7 +578,7 @@ def handle_challenge(event: EVENT_TYPE, li: LICHESS_TYPE, challenge_queue: MULTI
     else:
         li.decline_challenge(chlng.id, reason=decline_reason)
 
-
+# Should comment out line below when debugging.
 @backoff.on_exception(backoff.expo, BaseException, max_time=600, giveup=lichess.is_final,  # type: ignore[arg-type]
                       on_backoff=lichess.backoff_handler)
 def play_game(li: LICHESS_TYPE,
@@ -635,6 +642,13 @@ def play_game(li: LICHESS_TYPE,
         board = chess.Board()
         upd: dict[str, Any] = game.state
         quit_after_all_games_finish = config.quit_after_all_games_finish
+        if len(game.state["moves"]) != 0:
+            # this is a half-finished game. since we're a nonmarkovian model, we will need to abort or resign here
+            game_ender = li.abort if game.is_abortable() else li.resign
+            game_ender(game.id)
+            logger.info(f"Aborting {game.url()} because it is a half-finished game")
+            raise chess.engine.EngineError("board is from a previous unfinished game --> aborting now")
+            
         while (not terminated or quit_after_all_games_finish) and not force_quit:
             move_attempted = False
             try:
@@ -647,7 +661,7 @@ def play_game(li: LICHESS_TYPE,
                     board = setup_board(game)
                     if not is_game_over(game) and is_engine_move(game, prior_game, board):
                         disconnect_time = correspondence_disconnect_time
-                        # say_hello(conversation, hello, hello_spectators, board)
+                        say_hello(conversation, hello, hello_spectators, board)
                         setup_timer = Timer()
                         # print_move_number(board)
                         move_attempted = True
@@ -1041,16 +1055,34 @@ def start_lichess_bot() -> None:
     parser.add_argument("--config", help="Specify a configuration file (defaults to ./config.yml).")
     parser.add_argument("-l", "--logfile", help="Record all console output to a log file.", default=None)
     parser.add_argument("--disable_auto_logging", action="store_true", help="Disable automatic logging.")
+    parser.add_argument("--weight_file", help="Describes which iteration of the model training we are on.")
+    parser.add_argument("--temperature", help="Describes which iteration of the model training we are on.")
     args = parser.parse_args()
 
     logging_level = logging.DEBUG if args.v else logging.INFO
     auto_log_filename = None
     if not args.disable_auto_logging:
-        auto_log_filename = "./lichess_bot_auto_logs/recent.log"
+        # auto_log_filename = "./lichess_bot_auto_logs/recent.log"
+        auto_log_filename = Path("lichess_bot_auto_logs/recent.log").resolve()
     logging_configurer(logging_level, args.logfile, auto_log_filename, True)
     logger.info(intro(), extra={"highlighter": None})
 
-    CONFIG = load_config(args.config or "./config.yml")
+    # CONFIG = load_config(args.config or "./config.yml")
+    CONFIG = load_config(args.config or Path("config.yml").resolve())
+    #this is the weight file. The default is the stockfish executable
+    os.environ["WEIGHT_FILE"] = args.weight_file
+    os.environ["TEMPERATURE"] = args.temperature
+
+    from logtail import LogtailHandler
+    logtail_handler = LogtailHandler(source_token=os.environ['LOGTAIL_SOURCE'])
+    logger.add(
+        logtail_handler,
+        format=args.weight_file + ":{message}",
+        level="INFO",
+        backtrace=False,
+        diagnose=False,
+    )
+        
     logger.info("Checking engine configuration ...")
     with engine_wrapper.create_engine(CONFIG):
         pass
