@@ -642,12 +642,13 @@ def play_game(li: LICHESS_TYPE,
         board = chess.Board()
         upd: dict[str, Any] = game.state
         quit_after_all_games_finish = config.quit_after_all_games_finish
-        if len(game.state["moves"]) != 0:
-            # this is a half-finished game. since we're a nonmarkovian model, we will need to abort or resign here
-            game_ender = li.abort if game.is_abortable() else li.resign
-            game_ender(game.id)
-            logger.info(f"Aborting {game.url()} because it is a half-finished game")
-            raise chess.engine.EngineError("board is from a previous unfinished game --> aborting now")
+
+        # if len(game.state["moves"]) > 1:
+        #     # this is a half-finished game. since we're a nonmarkovian model, we will need to abort or resign here
+        #     game_ender = li.abort if game.is_abortable() else li.resign
+        #     game_ender(game.id)
+        #     logger.info(f"Aborting {game.url()} because it is a half-finished game")
+        #     raise chess.engine.EngineError("board is from a previous unfinished game --> aborting now")
             
         while (not terminated or quit_after_all_games_finish) and not force_quit:
             move_attempted = False
