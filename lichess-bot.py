@@ -1058,6 +1058,7 @@ def start_lichess_bot() -> None:
     parser.add_argument("--disable_auto_logging", action="store_true", help="Disable automatic logging.")
     parser.add_argument("--weight_file", help="Describes which iteration of the model training we are on.")
     parser.add_argument("--temperature", help="Describes which iteration of the model training we are on.")
+    parser.add_argument("--config_token", help="The bot token used in the config.yml file")
     args = parser.parse_args()
 
     logging_level = logging.DEBUG if args.v else logging.INFO
@@ -1068,21 +1069,23 @@ def start_lichess_bot() -> None:
     logging_configurer(logging_level, args.logfile, auto_log_filename, True)
     logger.info(intro(), extra={"highlighter": None})
 
+    os.environ["LICHESS_BOT_TOKEN"] = args.config_token
+    
     # CONFIG = load_config(args.config or "./config.yml")
     CONFIG = load_config(args.config or Path("config.yml").resolve())
     #this is the weight file. The default is the stockfish executable
     os.environ["WEIGHT_FILE"] = args.weight_file
     os.environ["TEMPERATURE"] = args.temperature
 
-    from logtail import LogtailHandler
-    logtail_handler = LogtailHandler(source_token=os.environ['LOGTAIL_SOURCE'])
-    logger.add(
-        logtail_handler,
-        format=args.weight_file + ":{message}",
-        level="INFO",
-        backtrace=False,
-        diagnose=False,
-    )
+    # from logtail import LogtailHandler
+    # logtail_handler = LogtailHandler(source_token=os.environ['LOGTAIL_SOURCE'])
+    # logger.add(
+    #     logtail_handler,
+    #     format=args.weight_file + ":{message}",
+    #     level="INFO",
+    #     backtrace=False,
+    #     diagnose=False,
+    # )
         
     logger.info("Checking engine configuration ...")
     with engine_wrapper.create_engine(CONFIG):
